@@ -16,10 +16,6 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-###############################################################################
-# Core modules used by GPT (unchanged)
-###############################################################################
-
 class LayerNorm(nn.Module):
     """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False."""
     def __init__(self, ndim, bias):
@@ -110,10 +106,6 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln_2(x))
         return x
 
-###############################################################################
-# Memory layer code provided by the user
-###############################################################################
-
 class MemoryLayer(nn.Module):
     def __init__(self, embed_dim, memory_size=65536, top_k=8):
         """
@@ -131,19 +123,15 @@ class MemoryLayer(nn.Module):
         self.values = nn.Parameter(torch.randn(memory_size, embed_dim))
         
     def forward(self, x):
-        # x shape: (batch_size, seq_len, embed_dim)
         batch_size, seq_len, _ = x.shape
-        # Flatten batch and sequence dimensions: (B*T, embed_dim)
         x_flat = x.view(-1, self.embed_dim)
         
-        # Compute similarity between each token and every memory key
-        similarity = torch.matmul(x_flat, self.keys.T)  # (B*T, memory_size)
+        similarity = torch.matmul(x_flat, self.keys.T)
         topk_values, topk_indices = torch.topk(similarity, self.top_k, dim=-1)
         
-        # Gather corresponding memory values and compute a weighted sum
-        retrieved_values = self.values[topk_indices]  # (B*T, top_k, embed_dim)
-        attention_weights = F.softmax(topk_values, dim=-1).unsqueeze(-1)  # (B*T, top_k, 1)
-        output = torch.sum(attention_weights * retrieved_values, dim=1)  # (B*T, embed_dim)
+        retrieved_values = self.values[topk_indices]
+        attention_weights = F.softmax(topk_values, dim=-1).unsqueeze(-1)
+        output = torch.sum(attention_weights * retrieved_values, dim=1)
         
         return output.view(batch_size, seq_len, self.embed_dim)
 
@@ -166,26 +154,20 @@ class BlockWithMemory(nn.Module):
         x = x + mem_out
         return x
 
-###############################################################################
-# GPT model with configurable memory-augmented blocks
-###############################################################################
-
 @dataclass
 class GPTConfig:
     block_size: int = 1024
-    vocab_size: int = 50304    # GPT-2 vocab size (may be padded for efficiency)
+    vocab_size: int = 50304
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
-    bias: bool = True         # use bias in Linear and LayerNorm modules
-    memory_size: int = 16384   # memory layer: number of memory slots
-    top_k: int = 8            # memory layer: top_k retrieval parameter
-    # List of layers (1-indexed) that will be replaced with memory layers.
+    bias: bool = True
+    memory_size: int = 16384
+    top_k: int = 8
     memory_layers: list = None
 
     def __post_init__(self):
-        # If no memory layers are provided, default to an empty list.
         if self.memory_layers is None:
             self.memory_layers = [2, 6]
             # self.memory_layers = []
